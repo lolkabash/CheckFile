@@ -42,10 +42,12 @@ CheckFile/
 1. Clone the repository:
    ```
    git clone https://github.com/lolkabash/CheckFile.git
-   cd virus-scanner
+   cd CheckFile
    ```
 
 2. Create a virtual environment and install dependencies:
+
+   On Linux: 
    ```
    python -m venv venv
    source venv/bin/activate
@@ -53,11 +55,14 @@ CheckFile/
    ```
    On Windows: 
    ```
+   python -m venv venv
    venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
 3. Set up environment variables:
+
+   On Linux: 
    ```
    export VIRUSTOTAL_API_KEY='your_api_key_here'
    export SECRET_KEY='your_secret_key_here'

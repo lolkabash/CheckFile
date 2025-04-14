@@ -50,14 +50,14 @@ def upload_file():
     # Check if a file was submitted
     if "file" not in request.files:
         flash("No file part", "danger")
-        return redirect(request.url)
+        return redirect(url_for("index"))
 
     file = request.files["file"]
 
     # If the user does not select a file, browser submits an empty file without a filename
     if file.filename == "":
         flash("No selected file", "danger")
-        return redirect(request.url)
+        return redirect(url_for("index"))
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
@@ -91,7 +91,57 @@ def upload_file():
                 f'File type not allowed. Allowed types: {", ".join(app.config["ALLOWED_EXTENSIONS"])}',
                 "danger",
             )
-        return redirect(request.url)
+        return redirect(url_for("index"))
+
+
+@app.route("/results")
+def show_results():
+    if "scan_results" not in session:
+        flash("No scan results found. Please upload a file first.", "warning")
+        return redirect(url_for("index"))
+
+    scan_results = session.get("scan_results")
+    filename = session.get("filename", "Unknown file")
+    file_hash = session.get("file_hash", "Unknown hash")
+
+    return render_template(
+        "results.html", results=scan_results, filename=filename, file_hash=file_hash
+    )
+
+
+# CSRF error handler
+@app.errorhandler(400)
+def handle_csrf_error(e):
+    flash("The form has expired. Please try again.", "danger")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    flash(
+        f'File too large. Maximum size is {app.config["MAX_CONTENT_LENGTH"] / (1024 * 1024)}MB',
+        "danger",
+    )
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(405)
+def method_not_allowed_error(error):
+    """Handle 405 Method Not Allowed errors."""
+    flash(
+        "The method is not allowed for the requested URL. Please try again.", "danger"
+    )
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    return render_template("error.html", error="Page not found (404)"), 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    return render_template("error.html", error="Internal server error (500)"), 500
 
 
 def scan_file_with_virustotal(filepath, file_hash):
@@ -209,47 +259,6 @@ def scan_file_with_virustotal(filepath, file_hash):
         return {"error": True, "message": "Analysis timed out. Please try again later."}
     except Exception as e:
         return {"error": True, "message": f"Error during analysis: {str(e)}"}
-
-
-@app.route("/results")
-def show_results():
-    if "scan_results" not in session:
-        flash("No scan results found. Please upload a file first.", "warning")
-        return redirect(url_for("index"))
-
-    scan_results = session.get("scan_results")
-    filename = session.get("filename", "Unknown file")
-    file_hash = session.get("file_hash", "Unknown hash")
-
-    return render_template(
-        "results.html", results=scan_results, filename=filename, file_hash=file_hash
-    )
-
-
-# CSRF error handler
-@app.errorhandler(400)
-def handle_csrf_error(e):
-    flash("The form has expired. Please try again.", "danger")
-    return redirect(url_for("index"))
-
-
-@app.errorhandler(413)
-def request_entity_too_large(error):
-    flash(
-        f'File too large. Maximum size is {app.config["MAX_CONTENT_LENGTH"] / (1024 * 1024)}MB',
-        "danger",
-    )
-    return redirect(url_for("index"))
-
-
-@app.errorhandler(404)
-def page_not_found(error):
-    return render_template("error.html", error="Page not found (404)"), 404
-
-
-@app.errorhandler(500)
-def internal_server_error(error):
-    return render_template("error.html", error="Internal server error (500)"), 500
 
 
 if __name__ == "__main__":
