@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+
+{% block title %}File Scan Results{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0">
+                    <i class="fas fa-clipboard-list"></i> Scan Results
+                </h2>
+            </div>
+            <div class="card-body">
+                {% if not results %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> No scan results were found. There might have been an issue with the scanning process.
+                    </div>
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-upload"></i> Try Again
+                        </a>
+                    </div>
+                {% elif results.error %}
+                    <div class="alert alert-danger mb-4">
+                        <i class="fas fa-exclamation-triangle"></i> Error: {{ results.message }}
+                    </div>
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-upload"></i> Try Again
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info mb-4">
+                        <i class="fas fa-info-circle"></i> Scan completed for file: <strong>{{ filename }}</strong>
+                    </div>
+                    
+                    <div class="file-details mb-4">
+                        <h3>File Information</h3>
+                        <table class="table table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th scope="row" style="width: 200px">Filename</th>
+                                    <td>{{ filename }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">SHA-256 Hash</th>
+                                    <td>{{ file_hash }}</td>
+                                </tr>
+                                {% set attributes = results.get('data', {}).get('attributes', {}) %}
+                                {% set stats = attributes.get('stats', {}) %}
+                                {% if stats %}
+                                <tr>
+                                    <th scope="row">Detection Rate</th>
+                                    <td>
+                                        <div class="progress">
+                                            {% set malicious = stats.get('malicious', 0) %}
+                                            {% set suspicious = stats.get('suspicious', 0) %}
+                                            {% set harmless = stats.get('harmless', 0) %}
+                                            {% set undetected = stats.get('undetected', 0) %}
+                                            {% set total = malicious + suspicious + harmless + undetected %}
+                                            {% set malicious_percent = 0 %}
+                                            {% if total > 0 %}
+                                                {% set malicious_percent = (malicious / total * 100) %}
+                                            {% endif %}
+                                            
+                                            <div class="progress-bar bg-danger" role="progressbar" 
+                                                 style="width: {{ malicious_percent }}%" 
+                                                 title="{{ malicious }} malicious">
+                                                {% if malicious > 0 %}{{ malicious }}{% endif %}
+                                            </div>
+                                            
+                                            {% set suspicious_percent = 0 %}
+                                            {% if total > 0 %}
+                                                {% set suspicious_percent = (suspicious / total * 100) %}
+                                            {% endif %}
+                                            <div class="progress-bar bg-warning" role="progressbar" 
+                                                 style="width: {{ suspicious_percent }}%" 
+                                                 title="{{ suspicious }} suspicious">
+                                                {% if suspicious > 0 %}{{ suspicious }}{% endif %}
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">
+                                            {{ malicious }} malicious, {{ suspicious }} suspicious, 
+                                            {{ harmless }} harmless, {{ undetected }} undetected
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="scan-engines mb-4">
+                        <h3>Engine Results</h3>
+                        
+                        {% set results_dict = attributes.get('results', {}) %}
+                        {% if results_dict %}
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Antivirus Engine</th>
+                                            <th>Result</th>
+                                            <th>Category</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for engine_name, engine_result in results_dict.items() %}
+                                        <tr>
+                                            <td>{{ engine_name }}</td>
+                                            <td>
+                                                {% if engine_result.get('result') %}
+                                                    {{ engine_result.get('result') }}
+                                                {% else %}
+                                                    <span class="text-muted">Clean</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if engine_result.get('category') == 'malicious' %}
+                                                    <span class="badge bg-danger">Malicious</span>
+                                                {% elif engine_result.get('category') == 'suspicious' %}
+                                                    <span class="badge bg-warning">Suspicious</span>
+                                                {% elif engine_result.get('category') == 'harmless' %}
+                                                    <span class="badge bg-success">Harmless</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Undetected</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="fas fa-info-circle"></i> No detailed engine results were returned from VirusTotal API.
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                
+                <div class="text-center mt-4">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-upload"></i> Scan Another File
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

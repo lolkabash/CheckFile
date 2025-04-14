@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Check File - Upload{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0"><i class="fas fa-cloud-upload-alt"></i> Upload File to Check</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Upload your file to scan it for viruses and malware using the VirusTotal API.
+                </p>
+                
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="upload-form">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Select a file to scan (max 16MB)</label>
+                        <input type="file" class="form-control" id="file" name="file" required>
+                        <div class="form-text">
+                            Allowed file types: txt, pdf, png, jpg, jpeg, gif, doc, docx, xls, xlsx, exe
+                        </div>
+                    </div>
+                    
+                    <div class="progress mb-3 d-none" id="upload-progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg" id="upload-button">
+                        <i class="fas fa-shield-virus"></i> Scan File
+                    </button>
+                </form>
+            </div>
+            <div class="card-footer">
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle"></i> Your files will be analyzed by VirusTotal's scanning engines to detect potential threats.
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4 shadow">
+            <div class="card-header bg-secondary text-white">
+                <h3 class="mb-0"><i class="fas fa-question-circle"></i> How it works</h3>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Upload your file using the form above</li>
+                    <li>Our system sends the file to VirusTotal for scanning</li>
+                    <li>VirusTotal analyzes the file with multiple antivirus engines</li>
+                    <li>Results are presented showing whether the file is safe or malicious</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        document.getElementById('upload-progress').classList.remove('d-none');
+        document.getElementById('upload-button').disabled = true;
+        document.getElementById('upload-button').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading and Scanning...';
+        
+        // Simulate progress (actual progress would require AJAX upload)
+        let progress = 0;
+        const progressBar = document.querySelector('.progress-bar');
+        
+        const timer = setInterval(function() {
+            progress += 5;
+            if (progress >= 90) {
+                clearInterval(timer);
+            }
+            progressBar.style.width = progress + '%';
+        }, 300);
+    });
+</script>
+{% endblock %}
