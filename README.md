@@ -9,6 +9,7 @@ A Flask-based web application that allows users to upload files and scan them us
 - Dynamic Results Display: Clear presentation of scan results (in alphabetical order of AntiVirus)
 - Security Measures: File validation, size limits, and secure file handling
 - Responsive Design: Works well on both desktop and mobile devices
+- CSRF protection is enabled to prevent cross-site request forgery attacks
 
 ## Prerequisites
 
@@ -100,7 +101,14 @@ CheckFile/
 - Change the theme by modifying the CSS in `static/css/style.css`.
 - Add additional file validations in the `upload_file` route.
 - Extend the results display to show more detailed information from the VirusTotal API.
+### File Upload Configuration
 
+You can control which file types are allowed for upload by setting the `ALLOWED_EXTENSIONS` environment variable:
+
+- To allow `"txt","pdf","png","jpg","jpeg","gif","doc","docx","xls","xlsx","exe"` file types (default), leave `ALLOWED_EXTENSIONS` empty or unset
+- To restrict to specific file types, set a comma-separated list of file extensions: `ALLOWED_EXTENSIONS=txt,pdf,png,jpg,jpeg,gif,doc,docx,xls,xlsx,exe`
+
+Note that allowing certain file types could potentially increase security risks, but all files are scanned before processing and are deleted immediately after scanning.
 ## Troubleshooting
 
 - If the application fails to start, check the log files for errors:

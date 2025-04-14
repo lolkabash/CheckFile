@@ -47,8 +47,16 @@
                                     <th scope="row">SHA-256 Hash</th>
                                     <td>{{ file_hash }}</td>
                                 </tr>
+                                
+                                {# Get attributes using various possible paths #}
                                 {% set attributes = results.get('data', {}).get('attributes', {}) %}
+                                
+                                {# Get stats from multiple possible locations #}
                                 {% set stats = attributes.get('stats', {}) %}
+                                {% if not stats %}
+                                    {% set stats = attributes.get('last_analysis_stats', {}) %}
+                                {% endif %}
+                                
                                 {% if stats %}
                                 <tr>
                                     <th scope="row">Detection Rate</th>
@@ -94,7 +102,12 @@
                     <div class="scan-engines mb-4">
                         <h3>Engine Results</h3>
                         
+                        {# Get results from multiple possible locations #}
                         {% set results_dict = attributes.get('results', {}) %}
+                        {% if not results_dict %}
+                            {% set results_dict = attributes.get('last_analysis_results', {}) %}
+                        {% endif %}
+                        
                         {% if results_dict %}
                             <div class="table-responsive">
                                 <table class="table table-striped table-hover">

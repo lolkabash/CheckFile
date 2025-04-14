@@ -45,5 +45,6 @@ uploads/
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Log files
 *.log
+logs/
