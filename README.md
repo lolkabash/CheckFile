@@ -95,6 +95,7 @@ CheckFile/
 - Uploaded files are stored temporarily and deleted after scanning.
 - API keys and sensitive information are stored as environment variables.
 - Input is sanitized to prevent malicious execution.
+- Added CSRFProtect to initialize CSRF protection for all forms.
 
 ## Customization
 
