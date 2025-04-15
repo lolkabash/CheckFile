@@ -1,4 +1,4 @@
-// Custom JavaScript functionality for the file scanner application
+// Custom JavaScript functionality for the check file application
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {

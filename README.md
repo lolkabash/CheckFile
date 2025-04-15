@@ -76,6 +76,33 @@ CheckFile/
    set DEBUG=True
    ```
 
+   Alternatively modify `.env.example` to add your API keys and rename to `.env`:
+   ```
+   # Flask configuration
+   SECRET_KEY=replace-with-a-secure-random-string
+   DEBUG=False
+
+   # Optional Upload configuration
+   # (Already set in code, but override them if needed)
+   # UPLOAD_FOLDER=/path/to/custom/upload/folder
+   # MAX_CONTENT_LENGTH=16777216
+
+   # Allowed Extentions
+   ALLOWED_EXTENSIONS=txt,pdf,png,jpg,jpeg,gif,doc,docx,xls,xlsx,exe,js,py
+
+   # VirusTotal API configuration.
+   VIRUSTOTAL_API_KEY=your-virustotal-api-key-here
+   VT_UPLOAD_URL=https://www.virustotal.com/api/v3/files
+   VT_FILE_CHECK_URL=https://www.virustotal.com/api/v3/files/
+   VT_ANALYSIS_URL=https://www.virustotal.com/api/v3/analyses/
+
+   # CSRF Time Limit in seconds (1 hour)
+   WTF_CSRF_TIME_LIMIT = 3600
+
+   # Polling Constants
+   POLLING_INTERVAL=5
+   POLLING_RETRIES=20
+   ```
 4. Run the development server:
    ```
    python app.py

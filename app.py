@@ -1,265 +1,298 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_wtf.csrf import CSRFProtect  # Import CSRF protection
 import os
 import hashlib
 import requests
+import base64
 import time
 from datetime import timedelta
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
+
+# =============================================================================
+# CONFIGURATION: All hard-coded variables are imported from config.py file.
+# =============================================================================
+
 import config
 
+# =============================================================================
+# FLASK APPLICATION SETUP
+# =============================================================================
 app = Flask(__name__)
-app.config["SECRET_KEY"] = config.SECRET_KEY
-app.config["UPLOAD_FOLDER"] = config.UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH  # 16MB max file size
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_PERMANENT"] = True
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
-app.config["ALLOWED_EXTENSIONS"] = config.ALLOWED_EXTENSIONS
-app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # Set CSRF token expiration to 1 hour
+app.config.update(
+    SECRET_KEY=config.SECRET_KEY,
+    DEBUG=config.DEBUG,
+    UPLOAD_FOLDER=config.UPLOAD_FOLDER,
+    MAX_CONTENT_LENGTH=config.MAX_CONTENT_LENGTH,
+    SESSION_TYPE="filesystem",
+    SESSION_PERMANENT=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    ALLOWED_EXTENSIONS=config.ALLOWED_EXTENSIONS,
+    VIRUSTOTAL_API_KEY=config.VIRUSTOTAL_API_KEY,
+    VT_UPLOAD_URL=config.VT_UPLOAD_URL,
+    VT_FILE_CHECK_URL=config.VT_FILE_CHECK_URL,
+    VT_ANALYSIS_URL=config.VT_ANALYSIS_URL,
+    WTF_CSRF_TIME_LIMIT=config.WTF_CSRF_TIME_LIMIT,
+    POLLING_INTERVAL=config.POLLING_INTERVAL,
+    POLLING_RETRIES=config.POLLING_RETRIES,
+)
 
-# Initialize CSRF protection
+# Initialize CSRF protection for security
 csrf = CSRFProtect(app)
 
-# Create upload folder if it doesn't exist
+# Ensure the upload folder exists. (Not strictly necessary if file processing is in-memory.)
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
 
 def allowed_file(filename):
-    """Check if a file has an allowed extension."""
-    # If ALLOWED_EXTENSIONS is None, allow all extensions
-    if app.config["ALLOWED_EXTENSIONS"] is None:
-        return True
+    """
+    Check if the filename's extension is among the allowed types.
 
-    # Otherwise, check if the file extension is in the allowed set
-    return (
-        "." in filename
-        and filename.rsplit(".", 1)[1].lower() in app.config["ALLOWED_EXTENSIONS"]
-    )
+    :param filename: Name of the file to check.
+    :return: True if the file extension is allowed, False otherwise.
+    """
+    allowed = app.config["ALLOWED_EXTENSIONS"]
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+
+
+def calculate_file_hash(filepath):
+    """
+    Calculate the SHA-256 hash of the provided file bytes.
+
+    :param file_bytes: Byte content of the file.
+    :return: Hexadecimal digest string representing the hash.
+    """
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
+def check_file_hash_with_virustotal(file_hash):
+    """
+    Check if VirusTotal has already scanned a file with the given hash.
+
+    :param file_hash: SHA-256 hash string of the file.
+    :return: JSON response from VirusTotal if found, None if not or on error.
+    """
+    headers = {"x-apikey": app.config["VIRUSTOTAL_API_KEY"]}
+    url = f"{app.config["VT_FILE_CHECK_URL"]}{file_hash}"
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            # File not found, so proceed with file upload.
+            return None
+        else:
+            flash(f"Error checking file hash: {response.status_code}", "warning")
+    except Exception as e:
+        flash(f"Error connecting to VirusTotal API: {str(e)}", "danger")
+    return None
+
+
+def upload_file_to_virustotal(encoded_file_content, filename):
+    """
+    Upload a base64-encoded file to VirusTotal and poll for analysis results.
+
+    The function performs two steps:
+      1. Upload the file.
+      2. Poll for the analysis results by checking the analysis endpoint.
+
+    :param encoded_file_content: Base64 encoded file content.
+    :param filename: Original secure filename.
+    :return: Dictionary with scan results or error information.
+    """
+    headers = {"x-apikey": app.config["VIRUSTOTAL_API_KEY"]}
+    upload_url = app.config["VT_UPLOAD_URL"]
+    try:
+        # Upload the file to VirusTotal.
+        files = {"file": (filename, encoded_file_content)}
+        response = requests.post(upload_url, headers=headers, files=files)
+        if response.status_code != 200:
+            return {"error": True, "message": f"Upload error: {response.status_code}"}
+
+        # Retrieve the analysis ID from the response.
+        analysis_id = response.json().get("data", {}).get("id")
+        if not analysis_id:
+            return {"error": True, "message": "Failed to retrieve analysis ID."}
+
+        analysis_url = f"{app.config["VT_ANALYSIS_URL"]}{analysis_id}"
+        # Poll for analysis results.
+        for _ in range(app.config["POLLING_RETRIES"]):
+            analysis_response = requests.get(analysis_url, headers=headers)
+            if analysis_response.status_code == 200:
+                status = (
+                    analysis_response.json()
+                    .get("data", {})
+                    .get("attributes", {})
+                    .get("status")
+                )
+                if status == "completed":
+                    return analysis_response.json()
+            time.sleep(app.config["POLLING_INTERVAL"])
+
+        return {"error": True, "message": "Analysis timed out. Please try again later."}
+    except Exception as e:
+        return {"error": True, "message": f"Error uploading file: {str(e)}"}
+
+
+# =============================================================================
+# ROUTES
+# =============================================================================
 
 
 @app.route("/", methods=["GET"])
 def index():
-    # Pass the allowed extensions to the template for display
-    allowed_extensions = app.config["ALLOWED_EXTENSIONS"]
-    return render_template("index.html", allowed_extensions=allowed_extensions)
+    """
+    Render the main index page with information on allowed file types.
+    """
+    return render_template(
+        "index.html", allowed_extensions=app.config["ALLOWED_EXTENSIONS"]
+    )
 
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    # Check if a file was submitted
-    if "file" not in request.files:
+    """
+    Handle file upload requests:
+      - Validate the file.
+      - Process the file in memory (calculating hash and encoding).
+      - Check VirusTotal for prior scans.
+      - If not scanned, upload the file to VirusTotal and poll for analysis.
+      - Store results in session and redirect to results page.
+    """
+    # Retrieve the file from the incoming request.
+    file = request.files.get("file")
+    if not file:
         flash("No file part", "danger")
         return redirect(url_for("index"))
 
-    file = request.files["file"]
-
-    # If the user does not select a file, browser submits an empty file without a filename
     if file.filename == "":
-        flash("No selected file", "danger")
+        flash("No file selected", "danger")
         return redirect(url_for("index"))
 
-    if file and allowed_file(file.filename):
+    if allowed_file(file.filename):
+        # Secure the filename
         filename = secure_filename(file.filename)
+        # Read file content into uploads folder for processing.
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(filepath)
 
-        # Calculate file hash (SHA-256)
-        sha256_hash = hashlib.sha256()
+        # Compute the SHA-256 hash of the file content.
+        file_hash = calculate_file_hash(filepath)
+        flash(f"File hash: {file_hash[:8]}...{file_hash[-8:]}", "info")
+
+        # Check if the file has already been scanned using its hash.
+        scan_results = check_file_hash_with_virustotal(file_hash)
+        if scan_results:
+            flash("File already scanned. Retrieving results.", "success")
+            session.update(
+                scan_results=scan_results, filename=filename, file_hash=file_hash
+            )
+            return redirect(url_for("show_results"))
+
+        # Encode the file content (base64) for secure transmission.
         with open(filepath, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        file_hash = sha256_hash.hexdigest()
+            encoded_file_content = base64.b64encode(f.read()).decode()
 
-        # Scan with VirusTotal API
-        scan_results = scan_file_with_virustotal(filepath, file_hash)
-
-        # Store results in session to display on results page
-        session["scan_results"] = scan_results
-        session["filename"] = filename
-        session["file_hash"] = file_hash
-
-        # Clean up - remove the file after scanning
+        scan_results = upload_file_to_virustotal(encoded_file_content, filename)
         os.remove(filepath)
 
+        if scan_results.get("error"):
+            flash(scan_results["message"], "danger")
+            return redirect(url_for("index"))
+
+        # Store scan details in session and notify the user.
+        session.update(
+            scan_results=scan_results, filename=filename, file_hash=file_hash
+        )
+        flash("File uploaded and scanned successfully.", "success")
         return redirect(url_for("show_results"))
     else:
-        if app.config["ALLOWED_EXTENSIONS"] is None:
-            flash("File type not allowed.", "danger")
-        else:
-            flash(
-                f'File type not allowed. Allowed types: {", ".join(app.config["ALLOWED_EXTENSIONS"])}',
-                "danger",
-            )
+        flash(
+            f"File type not allowed. Allowed types: {', '.join(app.config['ALLOWED_EXTENSIONS'])}",
+            "danger",
+        )
         return redirect(url_for("index"))
 
 
 @app.route("/results")
 def show_results():
+    """
+    Render the results page using the scan results stored in session.
+    If no results exist in session, prompt the user to upload a file.
+    """
     if "scan_results" not in session:
         flash("No scan results found. Please upload a file first.", "warning")
         return redirect(url_for("index"))
 
-    scan_results = session.get("scan_results")
-    filename = session.get("filename", "Unknown file")
-    file_hash = session.get("file_hash", "Unknown hash")
-
     return render_template(
-        "results.html", results=scan_results, filename=filename, file_hash=file_hash
+        "results.html",
+        results=session.get("scan_results"),
+        filename=session.get("filename", "Unknown file"),
+        file_hash=session.get("file_hash", "Unknown hash"),
     )
 
 
-# CSRF error handler
+# =============================================================================
+# ERROR HANDLERS
+# =============================================================================
+
+
 @app.errorhandler(400)
 def handle_csrf_error(e):
+    """
+    Handle CSRF errors by flashing a message and redirecting to the index page.
+    """
     flash("The form has expired. Please try again.", "danger")
     return redirect(url_for("index"))
 
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
-    flash(
-        f'File too large. Maximum size is {app.config["MAX_CONTENT_LENGTH"] / (1024 * 1024)}MB',
-        "danger",
-    )
-    return redirect(url_for("index"))
-
-
-@app.errorhandler(405)
-def method_not_allowed_error(error):
-    """Handle 405 Method Not Allowed errors."""
-    flash(
-        "The method is not allowed for the requested URL. Please try again.", "danger"
-    )
+    """
+    Handle errors where the uploaded file is too large.
+    Displays the max allowed file size to the user.
+    """
+    max_size = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+    flash(f"File too large. Max size is {max_size}MB.", "danger")
     return redirect(url_for("index"))
 
 
 @app.errorhandler(404)
 def page_not_found(error):
+    """
+    Render a custom 404 error page.
+    """
     return render_template("error.html", error="Page not found (404)"), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """
+    Handle errors when an HTTP method is not allowed for a route.
+    """
+    flash("The method is not allowed for the requested URL.", "danger")
+    return redirect(url_for("index"))
 
 
 @app.errorhandler(500)
 def internal_server_error(error):
+    """
+    Render a custom 500 error page for internal server errors.
+    """
     return render_template("error.html", error="Internal server error (500)"), 500
 
 
-def scan_file_with_virustotal(filepath, file_hash):
-    api_key = config.VIRUSTOTAL_API_KEY
-
-    if not api_key:
-        return {
-            "error": True,
-            "message": "VirusTotal API key is missing. Please set the VIRUSTOTAL_API_KEY environment variable.",
-        }
-
-    headers = {"x-apikey": api_key}
-
-    # First check if the file has been scanned before
-    check_url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
-
-    try:
-        response = requests.get(check_url, headers=headers)
-
-        if response.status_code == 200:
-            # File was scanned before, return the results
-
-            # Add a small delay to simulate scanning and ensure UI updates properly
-            time.sleep(2)
-
-            # For previously scanned files, we need to ensure the data structure is consistent
-            result_data = response.json()
-
-            # Check if the result has the expected structure
-            if "data" in result_data and "attributes" in result_data["data"]:
-                attributes = result_data["data"]["attributes"]
-
-                # Check if we have 'last_analysis_results' instead of 'results'
-                if (
-                    "last_analysis_results" in attributes
-                    and "results" not in attributes
-                ):
-                    # Copy last_analysis_results to results for template consistency
-                    attributes["results"] = attributes["last_analysis_results"]
-
-                # Check if we have 'last_analysis_stats' instead of 'stats'
-                if "last_analysis_stats" in attributes and "stats" not in attributes:
-                    # Copy last_analysis_stats to stats for template consistency
-                    attributes["stats"] = attributes["last_analysis_stats"]
-
-            return result_data
-        elif response.status_code == 401:
-            return {
-                "error": True,
-                "message": "API authentication error. Please check your VirusTotal API key.",
-            }
-        elif response.status_code == 404:
-            # Continue with upload since file wasn't found
-            pass
-        else:
-            return {
-                "error": True,
-                "message": f"Unexpected response from VirusTotal API: {response.status_code}",
-            }
-    except Exception as e:
-        return {
-            "error": True,
-            "message": f"Error connecting to VirusTotal API: {str(e)}",
-        }
-
-    # If file wasn't scanned before, upload it and scan
-    upload_url = "https://www.virustotal.com/api/v3/files"
-
-    try:
-        with open(filepath, "rb") as file:
-            files = {"file": (os.path.basename(filepath), file)}
-            upload_response = requests.post(upload_url, headers=headers, files=files)
-
-        if upload_response.status_code != 200:
-            return {
-                "error": True,
-                "message": f"Error uploading file: {upload_response.status_code}",
-            }
-
-        # Get the analysis ID from the upload response
-        upload_json = upload_response.json()
-
-        if "data" not in upload_json:
-            return {
-                "error": True,
-                "message": "Unexpected response format from VirusTotal API during upload",
-            }
-
-        analysis_id = upload_json.get("data", {}).get("id")
-
-        if not analysis_id:
-            return {
-                "error": True,
-                "message": "Could not get analysis ID from VirusTotal API response",
-            }
-
-        # Wait for the analysis to complete (polling with exponential backoff)
-        analysis_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
-
-        max_tries = 10
-        for i in range(max_tries):
-            analysis_response = requests.get(analysis_url, headers=headers)
-
-            if analysis_response.status_code == 200:
-                result_data = analysis_response.json()
-                status = result_data.get("data", {}).get("attributes", {}).get("status")
-
-                if status == "completed":
-                    return result_data
-
-            # Wait with exponential backoff before checking again
-            sleep_time = 2**i
-            time.sleep(sleep_time)
-
-        return {"error": True, "message": "Analysis timed out. Please try again later."}
-    except Exception as e:
-        return {"error": True, "message": f"Error during analysis: {str(e)}"}
-
+# =============================================================================
+# APPLICATION ENTRY POINT
+# =============================================================================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    # Run the Flask app. (Set debug to False in production.)
+    app.run(host="0.0.0.0", port=5000, debug=app.config["DEBUG"])

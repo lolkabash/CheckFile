@@ -6,7 +6,9 @@ load_dotenv()
 
 # Flask configuration
 SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24).hex())
-DEBUG = False  # Set to False for production
+DEBUG = (
+    os.environ.get("DEBUG", "False").lower() == "true"
+)  # Set to False for production
 
 # Upload configuration
 UPLOAD_FOLDER = os.environ.get(
@@ -35,8 +37,26 @@ else:
         "xls",
         "xlsx",
         "exe",
-        "js",
     }  # Default allowed extensions
 
 # VirusTotal API configuration
 VIRUSTOTAL_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY", "")
+
+VT_UPLOAD_URL = str(
+    os.environ.get("VT_UPLOAD_URL", "https://www.virustotal.com/api/v3/files")
+)
+VT_FILE_CHECK_URL = str(
+    os.environ.get("VT_FILE_CHECK_URL", "https://www.virustotal.com/api/v3/files/")
+)
+VT_ANALYSIS_URL = str(
+    os.environ.get("VT_ANALYSIS_URL", "https://www.virustotal.com/api/v3/analyses/")
+)
+
+# CSRF Time Limit in seconds (1 hour)
+WTF_CSRF_TIME_LIMIT = int(
+    os.environ.get("WTF_CSRF_TIME_LIMIT", 3600)
+)  # in seconds (1 hour)
+
+# Polling Constants
+POLLING_INTERVAL = int(os.environ.get("POLLING_INTERVAL", 5))
+POLLING_RETRIES = int(os.environ.get("POLLING_RETRIES", 20))
