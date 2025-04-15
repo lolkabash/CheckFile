@@ -76,39 +76,114 @@ CheckFile/
    set DEBUG=True
    ```
 
-   Alternatively modify `.env.example` to add your API keys and rename to `.env`:
+   Alternatively using `.env`:
    ```
-   # Flask configuration
-   SECRET_KEY=replace-with-a-secure-random-string
-   DEBUG=False
-
-   # Optional Upload configuration
-   # (Already set in code, but override them if needed)
-   # UPLOAD_FOLDER=/path/to/custom/upload/folder
-   # MAX_CONTENT_LENGTH=16777216
-
-   # Allowed Extentions
-   ALLOWED_EXTENSIONS=txt,pdf,png,jpg,jpeg,gif,doc,docx,xls,xlsx,exe,js,py
-
-   # VirusTotal API configuration.
-   VIRUSTOTAL_API_KEY=your-virustotal-api-key-here
-   VT_UPLOAD_URL=https://www.virustotal.com/api/v3/files
-   VT_FILE_CHECK_URL=https://www.virustotal.com/api/v3/files/
-   VT_ANALYSIS_URL=https://www.virustotal.com/api/v3/analyses/
-
-   # CSRF Time Limit in seconds (1 hour)
-   WTF_CSRF_TIME_LIMIT = 3600
-
-   # Polling Constants
-   POLLING_INTERVAL=5
-   POLLING_RETRIES=20
+   cp .env.example .env
+   # Edit the .env file with your own values
    ```
 4. Run the development server:
+
+   On Linux:
+   ```
+   gunicorn --bind 0.0.0.0:5000 wsgi:app
+   
+   ```
+
+   On Windows:
+   ```
+   waitress-serve --listen=*:5000 wsgi:app
+   ```
+   Quick Debugging:
    ```
    python app.py
    ```
 
 5. Access the application at http://localhost:5000
+
+## Production Deployment on AWS EC2
+
+### 1. Instance Setup
+
+1. Launch an EC2 instance:
+   - Choose Amazon Linux 2 or Ubuntu Server
+   - Select t2.micro for free tier eligibility
+   - Configure security group to allow SSH (22), HTTP (80), and HTTPS (443)
+
+2. Connect to your EC2 instance:
+   ```
+   ssh -i your-key.pem ec2-user@your-instance-public-ip
+   ```
+
+### 2. Application Setup
+
+1. Update system packages:
+   ```
+   sudo yum update -y  # For Amazon Linux
+   # OR
+   sudo apt update && sudo apt upgrade -y  # For Ubuntu
+   ```
+
+2. Install required packages:
+   ```
+   sudo yum install python3 python3-pip git nginx -y  # For Amazon Linux
+   # OR
+   sudo apt install python3 python3-pip git nginx -y  # For Ubuntu
+   ```
+
+3. Clone the repository:
+   ```
+   git clone https://github.com/lolkabash/CheckFile.git
+   cd CheckFile
+   ```
+
+4. Create and configure your environment:
+   ```
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   
+   cp .env.example .env
+   # Edit the .env file with your production values
+   nano .env
+   ```
+
+### 3. Web Server Configuration
+
+1. Set up Nginx:
+   ```
+   sudo cp CheckFile.conf /etc/nginx/conf.d/
+   # Edit the configuration to match your domain or IP
+   sudo nano /etc/nginx/conf.d/CheckFile.conf
+   
+   # Test and restart Nginx
+   sudo nginx -t
+   sudo systemctl restart nginx
+   ```
+
+2. Configure systemd for the application:
+   ```
+   sudo cp CheckFile.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl start CheckFile
+   sudo systemctl enable CheckFile
+   ```
+
+3. Check the application status:
+   ```
+   sudo systemctl status CheckFile
+   ```
+
+### 4. Secure Your Site (Optional)
+
+1. Set up SSL with Let's Encrypt:
+   ```
+   sudo amazon-linux-extras install epel -y  # For Amazon Linux
+   sudo yum install certbot python3-certbot-nginx -y
+   # OR
+   sudo apt install certbot python3-certbot-nginx -y  # For Ubuntu
+   
+   sudo certbot --nginx -d yourdomain.com
+   ```
 
 ## Usage
 
@@ -146,7 +221,7 @@ Note that allowing certain file types could potentially increase security risks,
 
 - If the application fails to start, check the log files for errors:
   ```
-  sudo journalctl -u virus-scanner.service
+  sudo journalctl -u CheckFile.service
   ```
 
 - If you encounter "API key error" messages, verify your VirusTotal API key is correctly set in the environment variables.
