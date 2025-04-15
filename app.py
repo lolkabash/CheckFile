@@ -80,7 +80,7 @@ def check_file_hash_with_virustotal(file_hash):
     :return: JSON response from VirusTotal if found, None if not or on error.
     """
     headers = {"x-apikey": app.config["VIRUSTOTAL_API_KEY"]}
-    url = f"{app.config["VT_FILE_CHECK_URL"]}{file_hash}"
+    url = f"{app.config['VT_FILE_CHECK_URL']}{file_hash}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -121,7 +121,7 @@ def upload_file_to_virustotal(encoded_file_content, filename):
         if not analysis_id:
             return {"error": True, "message": "Failed to retrieve analysis ID."}
 
-        analysis_url = f"{app.config["VT_ANALYSIS_URL"]}{analysis_id}"
+        analysis_url = f"{app.config['VT_ANALYSIS_URL']}{analysis_id}"
         # Poll for analysis results.
         for _ in range(app.config["POLLING_RETRIES"]):
             analysis_response = requests.get(analysis_url, headers=headers)
